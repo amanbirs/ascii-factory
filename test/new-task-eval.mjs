@@ -292,10 +292,11 @@ async function gate2Run(fx, which, run) {
     got = parseJson(await retry({ system: PROMPTS[which], prompt: checksPrompt(fx.skill, c) }))
     const label = labelOf(got, id)
     const before = c.checks
-    // A comment changes nothing and its reply is not a new answer; a split or an unrelated message would cut the case,
-    // which is a failure here, so the checks stay as they were.
+    // As refreshChecks does: the reply's checks are kept for steering and for a comment alike (a comment's reply is not a
+    // new answer, so its turn goes). A split or an unrelated message would cut the case, a failure here, so the checks
+    // stay as they were.
     if (label === 'comment') c.turns = c.turns.filter((t) => t.id !== `m${i + 1}`)
-    else if (label === 'steering') c.checks = setChecks(before, got.checks ?? [], seq)
+    if (label === 'comment' || label === 'steering') c.checks = setChecks(before, got.checks ?? [], seq)
     const kept = before.filter((k) => c.checks.includes(k)).length
     steps.push({ step: i + 1, label, checks: c.checks, kept, of: before.length })
   }
