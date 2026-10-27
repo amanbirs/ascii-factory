@@ -69,6 +69,8 @@
   button:disabled { opacity: .45; cursor: default; }
   button.icon { border: 0; background: none; padding: 0 6px; color: var(--muted); line-height: 1.3; font-size: 15px; }
   button.icon:hover { color: var(--ink); }
+  .split { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+  .split button.icon { font-size: 12px; text-decoration: underline; }
   button:focus-visible, .field:focus-within { outline: 2px solid var(--series); outline-offset: 1px; }
   kbd { font: 11px/1.5 var(--mono); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; color: var(--ink2); }
 
@@ -441,7 +443,18 @@ function deskParts(c) {
       <button class="q" data-edit-check="${k.id}" title="Click to reword">${esc(k.question)}</button>
       <button class="icon quiet" data-del-check="${k.id}" title="Remove this check" aria-label="Remove this check">×</button></li>`).join('')
   const more = c.writing ? `<li class="pending">writing checks</li>` : !c.checks?.length ? `<li class="hint">No checks, so nothing to grade it on.</li>` : ''
-  return [`<div class="answer">${art(latest(c).answer)}</div>`, saidHTML(c, noting !== c.id), `<ol class="checks">${checks}${more}</ol>`]
+  return [`${splitHTML(c)}<div class="answer">${art(latest(c).answer)}</div>`, saidHTML(c, noting !== c.id), `<ol class="checks">${checks}${more}</ol>`]
+}
+
+// A follow-up that asked for a different task became a case of its own: say so on both, and let the new one be undone.
+function splitHTML(c) {
+  const from = c.splitFrom && caseById(c.splitFrom)
+  const into = c.splitInto && caseById(c.splitInto)
+  if (from) {
+    const undo = from.status === 'queue' ? ` <button class="icon" data-rejoin="${c.id}" title="Put this back into ${esc(asked(from))}, as steering">Undo</button>` : ''
+    return `<p class="split">Split from <b>${esc(asked(from))}</b>: a follow-up asked for a different task.${undo}</p>`
+  }
+  return into ? `<p class="split">Continues as <b>${esc(asked(into))}</b>: a follow-up asked for a different task.</p>` : ''
 }
 
 function renderDesk() {
@@ -894,6 +907,7 @@ document.addEventListener('click', (e) => {
   } else if ('act' in d) act(d.act)
   else if ('editCheck' in d) editCheck(b)
   else if ('delCheck' in d) tool('delete_check', { check_id: d.delCheck }).catch(console.warn)
+  else if ('rejoin' in d) tool('rejoin_case', { case_id: d.rejoin }).catch(console.warn)
   else if ('view' in d) {
     // A second click on the open version folds it, and the lab goes on showing it; the chart only ever opens one.
     const id = Number(d.view)
