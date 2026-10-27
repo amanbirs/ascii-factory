@@ -999,6 +999,9 @@ ${cases.join('\n\n')}`,
     const key = `${c.session}:${steer.turn}`
     const moved = c.turns.slice(cut)
     const reactedTo = c.turns.slice(0, cut).findLast((t) => !t.comment)
+    // Where the session had already been left out (it moved on), it stays left out for the new case too.
+    const following = c.following
+    const dropped = [...c.dropped]
     c.turns = c.turns.slice(0, cut)
     c.dropped.push(...moved.map((t) => t.id))
     const steers = c.steering.filter((s) => moved.some((t) => t.id === s.turn))
@@ -1017,8 +1020,8 @@ ${cases.join('\n\n')}`,
       at: Date.now(),
       model: c.model,
       turns: [{ ...reactedTo, context: true }, ...moved],
-      following: true,
-      dropped: [],
+      following,
+      dropped: [...dropped],
       steering: steers.map((s) => ({ ...s, read: false, ...(s === steer ? { opens: true } : {}) })),
       notes: '',
       notesRead: '',
@@ -1047,6 +1050,7 @@ ${cases.join('\n\n')}`,
     // on from it, the case does not follow the session either.
     c.dropped = [...c.dropped.filter((id) => !moved.some((t) => t.id === id)), ...n.dropped.filter((id) => !c.dropped.includes(id))]
     c.steering.push(...n.steering.map(({ opens, ...s }) => ({ ...s, read: false, ...(opens ? { keep: true } : {}) })))
+    if (n.notes.trim()) c.notes = [c.notes.trim(), n.notes.trim()].filter(Boolean).join('\n') // checks are written again from them
     c.following = n.following
     c.verdicts = {}
     delete c.splitInto

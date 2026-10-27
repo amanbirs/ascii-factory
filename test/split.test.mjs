@@ -393,3 +393,40 @@ test('16. a comment just before the new task is not taken for an answer', async 
   assert.equal(cat.answer, CAT, 'the cat is graded on the cat')
   assert.equal((await board(b)).cases.find((c) => c.id === dog.id).turns[0].answer, CAT, 'the dog starts from the cat')
 })
+
+test('17. undo keeps the notes written on the split-off case', async () => {
+  const s = session(b).use('a cat', CAT)
+  await s.post()
+  s.say('make it a dog', DOG)
+  await s.post()
+  const dog = (await deskOf(b, 2)).find((c) => c.request === '/ascii a dog')
+  await tool(b, 'write_notes', { case_id: dog.id, text: 'floppy ears please' })
+  await tool(b, 'rejoin_case', { case_id: dog.id })
+  const [c] = await deskOf(b, 1)
+  assert.match(c.notes, /floppy ears please/)
+})
+
+test('18. a case that had stopped stays stopped when it is split later', async () => {
+  // A case from before this change: the dog was steering, and the session then moved on.
+  await tool(b, 'set_settings', { prompts: { checks: 'Write yes/no checks. Reply with JSON only: {"checks": [], "comments": [], "unrelated": []}' } })
+  const s = session(b).use('a cat', CAT).say('make it a dog', DOG).say('unrelated: write a SQL query', 'SELECT 1')
+  await s.post()
+  const [cat] = await until(async () => {
+    const d = await deskOf(b, 1)
+    return d[0].said_in_session.length === 1 && d
+  }, 'the old-style case')
+  // Back to the built-in prompt, and a note that has the checks written again: now the dog splits off.
+  await tool(b, 'set_settings', { prompts: { checks: '' } })
+  const mark = calls(b).length // the call log is shared with the tests before this one
+  await tool(b, 'write_notes', { case_id: cat.id, text: 'keep it simple' })
+  await deskOf(b, 2)
+  s.say('add a WHERE clause', 'SELECT 1 WHERE 1')
+  await s.post()
+  await new Promise((r) => setTimeout(r, 300))
+  const dog = (await deskOf(b, 2)).find((c) => c.request === '/ascii a dog')
+  assert.deepEqual(dog.said_in_session, ['make it a dog'], 'nothing from after the session moved on')
+  assert.equal(dog.answer, DOG)
+  // Not even for a moment: no check writer was ever shown the SQL as part of the dog case.
+  const seen = calls(b).slice(mark).filter((c) => c.role === 'checks' && /^REQUEST: \/ascii a dog$/m.test(c.prompt) && c.prompt.includes('write a SQL query'))
+  assert.equal(seen.length, 0, 'the unrelated message came back into the new case')
+})
