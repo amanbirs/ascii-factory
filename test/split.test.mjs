@@ -357,3 +357,39 @@ test('13. undo waits for a later split to be undone first', async () => {
   await tool(b, 'rejoin_case', { case_id: dog.id })
   assert.equal((await deskOf(b, 1))[0].request, '/ascii a cat')
 })
+
+// Found in review: a hook delivery can carry several turns at once (the board was not running, or a session resumed).
+
+test('14. a session caught all at once: the original still gets its checks', async () => {
+  const s = session(b).use('a cat', CAT).say('make it more detailed', BIG_CAT).say('make it a dog', DOG)
+  await s.post()
+  const d = await deskOf(b, 2)
+  const cat = d.find((c) => c.request === '/ascii a cat')
+  assert.deepEqual(cat.said_in_session, ['make it more detailed'])
+  assert.ok(cat.checks.some((k) => k.question === 'Reflects: make it more detailed?'), 'the steer before the split is in the checks')
+})
+
+test('15. undo keeps a case stopped where the session moved on', async () => {
+  const s = session(b).use('a cat', CAT).say('make it a dog', DOG).say('unrelated: write a SQL query', 'SELECT 1')
+  await s.post()
+  const dog = (await deskOf(b, 2)).find((c) => c.request === '/ascii a dog')
+  await tool(b, 'rejoin_case', { case_id: dog.id })
+  s.say('add a WHERE clause', 'SELECT 1 WHERE 1')
+  await s.post()
+  await new Promise((r) => setTimeout(r, 300))
+  const [c] = await deskOf(b, 1)
+  assert.deepEqual(c.said_in_session, ['make it a dog'], 'nothing after the unrelated message')
+  assert.equal(c.answer, DOG)
+})
+
+test('16. a comment just before the new task is not taken for an answer', async () => {
+  const s = session(b).use('a cat', CAT)
+  await s.post()
+  s.say('thanks', 'You are welcome.').say('make it a dog', DOG)
+  await s.post()
+  const d = await deskOf(b, 2)
+  const cat = d.find((c) => c.request === '/ascii a cat')
+  const dog = d.find((c) => c.request === '/ascii a dog')
+  assert.equal(cat.answer, CAT, 'the cat is graded on the cat')
+  assert.equal((await board(b)).cases.find((c) => c.id === dog.id).turns[0].answer, CAT, 'the dog starts from the cat')
+})

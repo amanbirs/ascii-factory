@@ -937,15 +937,9 @@ ${cases.join('\n\n')}`,
       if (stale()) return
       if (!got) break
       for (const s of unread) s.read = true
+      const notesRead = c.notesRead
       c.notesRead = notes
-      // A follow-up that asked for a different task becomes a case of its own. This reply's checks were written with
-      // it in view, so the case keeps the checks it had.
-      const task = newTaskIn(c, got)
-      if (task) {
-        splitOff(c, task.steer, task.request)
-        continue
-      }
-      leaveOut(c, got.unrelated)
+      // Comments first, so that a "thanks" just before a new task is not taken for the answer it reacted to.
       for (const s of unread) {
         const t = got.comments.includes(s.id) && c.turns.find((x) => x.id === s.turn)
         if (t && !t.comment) {
@@ -953,6 +947,17 @@ ${cases.join('\n\n')}`,
           c.verdicts = {} // the answer to grade is an earlier one again
         }
       }
+      // A follow-up that asked for a different task becomes a case of its own. This reply's checks were written with
+      // it in view, so they are not kept: the case goes round again on what is left, its steering unread once more.
+      const task = newTaskIn(c, got)
+      if (task) {
+        splitOff(c, task.steer, task.request)
+        for (const s of unread) if (c.steering.includes(s)) s.read = false
+        c.notesRead = notesRead
+        c.again = true
+        continue
+      }
+      leaveOut(c, got.unrelated)
       setChecks(c, got.checks)
     } while (c.again && !stale())
     c.writing = false
@@ -1038,9 +1043,11 @@ ${cases.join('\n\n')}`,
     if (later) throw new Error(`${n.id} was split again, into "${clip(later.ask, 40)}": undo that later split first`)
     const moved = n.turns.filter((t) => !t.context)
     c.turns.push(...moved)
-    c.dropped = c.dropped.filter((id) => !moved.some((t) => t.id === id))
+    // The case takes over where the new one had got to: the turns it left out stay out, and if the session had moved
+    // on from it, the case does not follow the session either.
+    c.dropped = [...c.dropped.filter((id) => !moved.some((t) => t.id === id)), ...n.dropped.filter((id) => !c.dropped.includes(id))]
     c.steering.push(...n.steering.map(({ opens, ...s }) => ({ ...s, read: false, ...(opens ? { keep: true } : {}) })))
-    c.following = true
+    c.following = n.following
     c.verdicts = {}
     delete c.splitInto
     state.splits = state.splits.filter((x) => !(x.session === n.session && x.turn === moved[0]?.id))
