@@ -71,6 +71,7 @@
   button.icon:hover { color: var(--ink); }
   .split { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
   .split button.icon { font-size: 12px; text-decoration: underline; }
+  .split button.icon:disabled { text-decoration: none; }
   button:focus-visible, .field:focus-within { outline: 2px solid var(--series); outline-offset: 1px; }
   kbd { font: 11px/1.5 var(--mono); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; color: var(--ink2); }
 
@@ -447,14 +448,26 @@ function deskParts(c) {
 }
 
 // A follow-up that asked for a different task became a case of its own: say so on both, and let the new one be undone.
+// A case can be both, split from one and split again into another.
 function splitHTML(c) {
   const from = c.splitFrom && caseById(c.splitFrom)
   const into = c.splitInto && caseById(c.splitInto)
-  if (from) {
-    const undo = from.status === 'queue' ? ` <button class="icon" data-rejoin="${c.id}" title="Put this back into ${esc(asked(from))}, as steering">Undo</button>` : ''
-    return `<p class="split">Split from <b>${esc(asked(from))}</b>: a follow-up asked for a different task.${undo}</p>`
-  }
-  return into ? `<p class="split">Continues as <b>${esc(asked(into))}</b>: a follow-up asked for a different task.</p>` : ''
+  const lines = []
+  if (from) lines.push(`Split from <b>${esc(asked(from))}</b>: a follow-up asked for a different task.${undoHTML(c, from, into)}`)
+  if (into) lines.push(`Continues as <b>${esc(asked(into))}</b>: a follow-up asked for a different task.`)
+  return lines.map((l) => `<p class="split">${l}</p>`).join('')
+}
+
+// Undo, or why it cannot be done yet: a split is undone only while both cases are on the desk, and after any later
+// split of this case has been undone (rejoin, in the server).
+function undoHTML(c, from, into) {
+  const why =
+    from.status !== 'queue' ? `${asked(from)} is in the dataset`
+    : into?.status === 'queue' ? `undo the split into ${asked(into)} first`
+    : into ? `${asked(into)}, split from this, is in the dataset`
+    : ''
+  if (why) return ` <button class="icon" disabled title="Undo is not available: ${esc(why)}">Undo</button> <span class="why">${esc(why)}</span>`
+  return ` <button class="icon" data-rejoin="${c.id}" title="Put this back into ${esc(asked(from))}, as steering">Undo</button>`
 }
 
 function renderDesk() {
