@@ -197,15 +197,15 @@ const FOLLOW_UPS = [
 ]
 const EXPECT = { new_task: 'new_task', refinement: 'steering', borderline: 'steering', comment: 'comment', unrelated: 'unrelated' }
 
-// Gate 2: one case steered step by step. Nothing here is a new task.
+// Gate 2: one case steered step by step. Every step is steering except the last, a comment; the gates in report() say so.
 const SEQUENCE = {
   ask: '/ascii a coffee mug',
   steps: [
-    { text: 'make it bigger', expect: 'steering' },
-    { text: 'add steam coming out of the top', expect: 'steering' },
-    { text: 'it should be at least 12 lines tall', expect: 'steering' },
-    { text: 'less cluttered, fewer characters inside the mug', expect: 'steering' },
-    { text: 'thanks, looks good', expect: 'comment' },
+    { text: 'make it bigger' },
+    { text: 'add steam coming out of the top' },
+    { text: 'it should be at least 12 lines tall' },
+    { text: 'less cluttered, fewer characters inside the mug' },
+    { text: 'thanks, looks good' },
   ],
 }
 
@@ -309,8 +309,10 @@ const gate2 = (fx) => Promise.all(['new', 'old'].flatMap((which) => Array.from({
 const count = (xs, f) => xs.filter(f).length
 const tally = (rs) => Object.entries(rs.reduce((a, r) => ((a[r.label] = (a[r.label] ?? 0) + 1), a), {})).map(([k, n]) => `${k} ${n}`).join(', ')
 
-function report(g1, g2) {
-  const out = [`# new_task eval`, '', `Check writer: ${MODEL}${EFFORT ? ` · ${EFFORT}` : ''}. ${RUNS} runs each. Judged ("new"): CHECK_SYSTEM ${CANDIDATE ? `at ${CANDIDATE}` : 'in this tree'}. Compared with ("old"): ${BASELINE}.`, '', '## Gate 1: single follow-ups', '']
+// meta is how the results were made: this run's settings, or those saved with results being scored again.
+function report(g1, g2, meta) {
+  const { model, effort, runs, candidate, baseline } = meta
+  const out = [`# new_task eval`, '', `Check writer: ${model}${effort ? ` · ${effort}` : ''}. ${runs} runs each. Judged ("new"): CHECK_SYSTEM ${candidate}. Compared with ("old"): ${baseline}.`, '', '## Gate 1: single follow-ups', '']
   out.push('| Follow-up | Expected | New prompt | Requests (new) | Old prompt |', '|---|---|---|---|---|')
   for (const f of FOLLOW_UPS) {
     const n = g1.filter((r) => r.item === f.id && r.which === 'new')
@@ -358,7 +360,7 @@ function report(g1, g2) {
   const g2checks = [
     ['No split or unrelated, ever', count(all('new'), (x) => x.label === 'new_task' || x.label === 'unrelated') === 0, `${count(all('new'), (x) => x.label === 'new_task' || x.label === 'unrelated')} of ${all('new').length}`],
     ['"thanks, looks good" is a comment', at('new', 5).every((x) => x.label === 'comment'), at('new', 5).map((x) => x.label).join(', ')],
-    ['"at least 12 lines" kept exactly', twelve('new').every(Boolean), `new ${count(twelve('new'), Boolean)} of ${RUNS}, old ${count(twelve('old'), Boolean)} of ${RUNS}`],
+    ['"at least 12 lines" kept exactly', twelve('new').every(Boolean), `new ${count(twelve('new'), Boolean)} of ${runs}, old ${count(twelve('old'), Boolean)} of ${runs}`],
     ['Untouched checks kept, as often as before', keptRate('new') >= keptRate('old') - 0.1, `new ${(100 * keptRate('new')).toFixed(0)}%, old ${(100 * keptRate('old')).toFixed(0)}%`],
   ]
   out.push('', '## Gates', '', '| Check | Pass | Result |', '|---|---|---|')
@@ -381,17 +383,21 @@ if (process.argv.includes('--add-replies')) {
 } else if (arg('rescore')) {
   // Score saved results again, with no model calls.
   const r = JSON.parse(readFileSync(arg('rescore'), 'utf8'))
-  console.log(report(r.gate1, r.gate2))
+  // Older results saved the candidate as a bare ref, "working tree", or not at all (the working tree).
+  const c = r.candidate
+  const candidate = /^(at|in) /.test(c ?? '') ? c : !c || c === 'working tree' ? 'in the working tree' : `at ${c}`
+  console.log(report(r.gate1, r.gate2, { model: r.model, effort: r.effort, runs: r.runs, candidate, baseline: r.baseline }))
 } else if (process.argv.includes('--fixtures')) {
   await makeFixtures(arg('from-board', join(ROOT, 'data/v2.json')))
 } else {
   const fx = JSON.parse(readFileSync(FIXTURES, 'utf8'))
   const started = Date.now()
   const [g1, g2] = await Promise.all([gate1(fx), gate2(fx)])
-  const md = report(g1, g2)
+  const meta = { model: MODEL, effort: EFFORT, runs: RUNS, candidate: CANDIDATE ? `at ${CANDIDATE}` : 'in the working tree', baseline: BASELINE }
+  const md = report(g1, g2, meta)
   const stamp = new Date().toISOString().replace(/[:.]/g, '-') + (TAG ? `-${TAG}` : '')
   mkdirSync(join(ROOT, 'data/new-task-eval'), { recursive: true })
-  writeFileSync(join(ROOT, `data/new-task-eval/${stamp}.json`), JSON.stringify({ model: MODEL, effort: EFFORT, runs: RUNS, candidate: CANDIDATE ?? 'working tree', baseline: BASELINE, gate1: g1, gate2: g2 }, null, 1))
+  writeFileSync(join(ROOT, `data/new-task-eval/${stamp}.json`), JSON.stringify({ ...meta, gate1: g1, gate2: g2 }, null, 1))
   writeFileSync(join(ROOT, `data/new-task-eval/${stamp}.md`), md)
   console.log(md)
   console.log(`\n${((Date.now() - started) / 1000).toFixed(0)}s. Results in data/new-task-eval/${stamp}.{md,json}`)
