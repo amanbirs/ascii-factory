@@ -255,10 +255,13 @@ You are given the skill, the request, the answer it got in the session, what the
 - YES must mean the answer is the way they want it. One thing per check, at most 20 words.
 - Change a check only when something the person said calls for it. Keep every other check word for word, with its id.
 - A message in the session that is about the answer but asks for no change ("thanks", "looks good", a question about it) changes nothing, and the reply to it is not a new answer: put its id in "comments".
-- A message in the session may not be about this answer at all: other work, or a new topic. Put its id in "unrelated", and take nothing from it or from anything after it.
+- A message in the session may not be about this answer at all: other work, or something the skill is not for. Put its id in "unrelated", and take nothing from it or from anything after it.
+- A message may ask the skill for a different task instead of changing this one: a request of the same kind, that this skill is for (see its description). Ask: would an answer that does what the message asks still be a correct answer to the request? If not, it is a new task: put it in "new_task", and take nothing from it or from anything after it. On a request for a boat, "make it a car" or "now a tree" is a new task; "add a sail", "make it longer" or "make it a sailboat" is not. Only the first new task counts.
+- A message that asks for something this skill is not for (other work, another tool) is unrelated, not a new task.
+- The new task's request is what the skill would now be asked, in the form of the request above, with only what changes the task: "a car", not "a small red car". Leave out any preferences said with it.
 
 Reply with JSON only:
-{"checks": [{"id": "<the id of a check it has now, or null>", "question": "..."}], "comments": ["<id of a message>"], "unrelated": ["<id of a message>"]}`
+{"checks": [{"id": "<the id of a check it has now, or null>", "question": "..."}], "comments": ["<id of a message>"], "unrelated": ["<id of a message>"], "new_task": {"id": "<id of a message>", "request": "..."} or null}`
 
 const GENERATE_SYSTEM = `You write a Claude Code skill: the instructions in its SKILL.md, from cases of how one person wants it to work.
 Each case is a request the skill was used for, with yes/no checks written from what the person said about the answers they got, and their notes.
