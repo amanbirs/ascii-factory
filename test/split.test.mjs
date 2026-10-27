@@ -430,3 +430,20 @@ test('18. a case that had stopped stays stopped when it is split later', async (
   const seen = calls(b).slice(mark).filter((c) => c.role === 'checks' && /^REQUEST: \/ascii a dog$/m.test(c.prompt) && c.prompt.includes('write a SQL query'))
   assert.equal(seen.length, 0, 'the unrelated message came back into the new case')
 })
+
+test('19. accepting the original while its checks are written does not stop the new case following', async () => {
+  const s = session(b).use('a cat', CAT)
+  await s.post()
+  const [cat] = await deskOf(b, 1)
+  s.say('make it a dog (slow)', DOG)
+  await s.post()
+  await tool(b, 'review_case', { case_id: cat.id, decision: 'accept' }) // while the check writer is still at it
+  await until(async () => (await desk(b)).some((c) => c.request === '/ascii a dog'), 'the dog split off', 8000)
+  s.say('make the tail longer', DOG + '\n~~')
+  await s.post()
+  const [dog] = await until(async () => {
+    const d = await deskOf(b, 1)
+    return d[0].said_in_session.length === 2 && d
+  }, 'the dog steered after the split')
+  assert.deepEqual(dog.said_in_session, ['make it a dog (slow)', 'make the tail longer'])
+})

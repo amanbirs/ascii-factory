@@ -351,6 +351,7 @@ const freshBoard = (name, file) => ({
   //   turns:     [{ id, ask, answer, comment }]  the use, then each follow-up in the session while it is about this answer.
   //              comment: it asked for no change ("thanks"), so its reply is not a new answer
   //   following: later turns of the session are still taken as steering. Off once the session moves on, or it is accepted
+  //   movedOn:   the session moved on from it (an unrelated message, or a split), as opposed to it being accepted
   //   steering:  [{ id, text, turn, read }]  what was said in the session after the use, read once worked into the checks
   //   notes:     what the person thinks of it, spoken or typed on the desk. notesRead: the notes the checks were last written from
   //   checks:    [{ id, question }], or null until the first ones are written
@@ -976,6 +977,7 @@ ${cases.join('\n\n')}`,
     c.dropped.push(...gone)
     c.steering = c.steering.filter((s) => !gone.includes(s.turn))
     c.following = false
+    c.movedOn = true
     c.verdicts = {}
     log(`the session moved on from "${clip(c.ask, 40)}": left out "${clip(first.text, 60)}"`, 'usage')
   }
@@ -999,14 +1001,17 @@ ${cases.join('\n\n')}`,
     const key = `${c.session}:${steer.turn}`
     const moved = c.turns.slice(cut)
     const reactedTo = c.turns.slice(0, cut).findLast((t) => !t.comment)
-    // Where the session had already been left out (it moved on), it stays left out for the new case too.
-    const following = c.following
+    // Where the session had already been left out (it moved on), it stays left out for the new case too. Accepting the
+    // case also stops it following, but that is no reason for the new case, still on the desk, to stop. (A case saved
+    // before movedOn was kept: on the desk and not following means the session moved on.)
+    const following = !(c.movedOn ?? (c.status === 'queue' && !c.following))
     const dropped = [...c.dropped]
     c.turns = c.turns.slice(0, cut)
     c.dropped.push(...moved.map((t) => t.id))
     const steers = c.steering.filter((s) => moved.some((t) => t.id === s.turn))
     c.steering = c.steering.filter((s) => !steers.includes(s))
     c.following = false
+    c.movedOn = true // the turns after the split are the new case's
     c.verdicts = {}
     state.splits.push({ session: c.session, turn: steer.turn, request })
     if (state.dismissed.includes(key) || state.cases.some((x) => x.key === key)) return
@@ -1052,6 +1057,7 @@ ${cases.join('\n\n')}`,
     c.steering.push(...n.steering.map(({ opens, ...s }) => ({ ...s, read: false, ...(opens ? { keep: true } : {}) })))
     if (n.notes.trim()) c.notes = [c.notes.trim(), n.notes.trim()].filter(Boolean).join('\n') // checks are written again from them
     c.following = n.following
+    c.movedOn = Boolean(n.movedOn)
     c.verdicts = {}
     delete c.splitInto
     state.splits = state.splits.filter((x) => !(x.session === n.session && x.turn === moved[0]?.id))

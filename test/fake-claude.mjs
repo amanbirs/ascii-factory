@@ -9,6 +9,7 @@
 //   judge:        every check passes.
 //   student:      repeats the request it was given, in a code block.
 //
+// A message containing "(slow)" makes the check writer take a second and a half, so a test can act while it waits.
 // Each call is appended to FAKE_LOG as a line of JSON: { role, prompt }.
 
 import { appendFileSync } from 'node:fs'
@@ -63,6 +64,7 @@ function judge() {
 const student = () => '```\n' + (prompt.match(/ARGUMENTS: (.*)$/m)?.[1] ?? prompt.trim()) + '\n```'
 
 const role = system.startsWith('You grade one answer') ? 'judge' : system.startsWith('You are Claude Code.') ? 'student' : 'checks'
+if (role === 'checks' && prompt.includes('(slow)')) await new Promise((r) => setTimeout(r, 1500))
 const result = role === 'judge' ? judge() : role === 'student' ? student() : checkWriter()
 if (process.env.FAKE_LOG) appendFileSync(process.env.FAKE_LOG, JSON.stringify({ role, prompt }) + '\n')
 // The board reads stream-json and takes the result line.

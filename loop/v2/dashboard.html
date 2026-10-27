@@ -505,6 +505,16 @@ function finishNotes(save) {
   render()
 }
 
+// Undo a split. Notes still open on the case are saved first, and waited for: once it is undone the case is gone.
+async function rejoin(id) {
+  if (noting === id) {
+    const text = $('notes').value
+    finishNotes(false)
+    if (text.trim() !== (caseById(id)?.notes ?? '').trim()) await tool('write_notes', { case_id: id, text })
+  }
+  await tool('rejoin_case', { case_id: id })
+}
+
 // Reword a desk check in place: Enter saves, Escape or leaving the box puts it back.
 function editCheck(button) {
   const caseId = button.closest('.case').dataset.id
@@ -907,7 +917,7 @@ document.addEventListener('click', (e) => {
   } else if ('act' in d) act(d.act)
   else if ('editCheck' in d) editCheck(b)
   else if ('delCheck' in d) tool('delete_check', { check_id: d.delCheck }).catch(console.warn)
-  else if ('rejoin' in d) tool('rejoin_case', { case_id: d.rejoin }).catch(console.warn)
+  else if ('rejoin' in d) rejoin(d.rejoin).catch(console.warn)
   else if ('view' in d) {
     // A second click on the open version folds it, and the lab goes on showing it; the chart only ever opens one.
     const id = Number(d.view)
